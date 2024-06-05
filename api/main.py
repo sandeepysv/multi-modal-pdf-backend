@@ -1,8 +1,16 @@
 from time import time
 from fastapi import FastAPI, __version__
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
+from fastapi.responses import StreamingResponse, HTMLResponse
 from pydantic import BaseModel
+import os
+import random
+import io
+from reportlab.pdfgen import canvas
+from reportlab.platypus import Paragraph, Frame
+from reportlab.lib.styles import ParagraphStyle
+import markdown as md
+from openai import OpenAI
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -39,15 +47,6 @@ async def hello():
 class Params(BaseModel):
     prompt: str
 
-from openai import OpenAI
-import os
-import random
-import uuid
-from reportlab.pdfgen import canvas
-from reportlab.platypus import Paragraph,Frame
-from reportlab.lib.styles import ParagraphStyle
-import markdown as md
-
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 @app.post('/generate-pdf')
@@ -77,13 +76,12 @@ async def generate_pdf(params: Params):
         )
         images.append(completion.data[0].url)
 
-    filename = uuid.uuid4().hex + ".pdf"
-    file_path = os.path.join("static", filename)
-    c = canvas.Canvas(filename=file_path)
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer)
     c.setPageSize((1024, 768))
     c.setFont("Helvetica", 18)
     c.setLineWidth(2)
-    headingStyle=ParagraphStyle(
+    headingStyle = ParagraphStyle(
         name="Heading",
         fontName="Helvetica",
         fontSize=22,
@@ -91,7 +89,7 @@ async def generate_pdf(params: Params):
         spaceAfter=12,
         alignment=4
     )
-    styles=ParagraphStyle(
+    styles = ParagraphStyle(
         name="Normal",
         fontName="Helvetica",
         fontSize=18,
@@ -101,8 +99,8 @@ async def generate_pdf(params: Params):
         alignment=4
     )
     for i in range(total_slides):
-        text=[]
-        rand = random.randint(1,100)
+        text = []
+        rand = random.randint(1, 100)
         content[i] = md.markdown(content[i])
         if rand % 2 == 0:
             c.drawImage(images[i], 0, 0, 512)
@@ -116,8 +114,11 @@ async def generate_pdf(params: Params):
             frame.addFromList(text, c)
         c.showPage()
     c.save()
+    buffer.seek(0)
 
-    return {
-        'prompt': params.prompt,
-        'file': file_path
+    headers = {
+        "Content-Disposition": f"attachment; filename=output.pdf",
+        "Content-Type": "application/pdf"
     }
+
+    return StreamingResponse(io.BytesIO(buffer.getvalue()), headers=headers)
