@@ -52,7 +52,7 @@ client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 @app.post('/generate-pdf')
 async def generate_pdf(params: Params):
-    total_slides = random.randint(3, 5)
+    total_slides = random.randint(1, 3)
     content = []
     for i in range(total_slides):
         sub = "st" if i == 0 else "nd" if i == 1 else "rd" if i == 2 else "th"
